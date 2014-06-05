@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 
 namespace ExactTarget.EmailFromTemplateCreator.TestConsole
 {
@@ -6,20 +7,24 @@ namespace ExactTarget.EmailFromTemplateCreator.TestConsole
     {
         public static void Main(string[] args)
         {
-            var t = new EmailCreator(new ExactTargetConfiguration
+            var emailCreator = new EmailCreator(new ExactTargetConfiguration
             {
-                ClientId = null,
-                ApiUserName= "",
+                ApiUserName = "",
                 ApiPassword = "",
                 EndPoint = "https://webservice.s6.exacttarget.com/Service.asmx"
             });
 
-            var templateId = t.RetrieveEmailTemplateId("JustGiving Template");
+            const int templateId = 1802;
 
             try
             {
-                t.Create(templateId, "test-email", "test-subject", "test body");
-                Console.Write("Done");
+                var id = emailCreator.Create(templateId,
+                    "test-email",
+                    "test-subject",
+                    new KeyValuePair<string, string>("ContentAreaName", "<p>Test content</p>")
+                    );
+
+                Console.Write("Done {0}", id);
             }
             catch (Exception ex)
             {

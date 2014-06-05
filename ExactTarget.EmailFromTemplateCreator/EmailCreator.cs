@@ -1,13 +1,15 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net;
 using System.Text;
+using System.Xml.Linq;
 using ExactTarget.EmailFromTemplateCreator.ExactTargetApi;
 
 namespace ExactTarget.EmailFromTemplateCreator
 {
-    public class EmailCreator
+    public class EmailCreator : IEmailCreator
     {
         private readonly IExactTargetConfiguration _config;
         private readonly SoapClient _client;
@@ -21,42 +23,40 @@ namespace ExactTarget.EmailFromTemplateCreator
             _client.ClientCredentials.UserName.Password = _config.ApiPassword;
         }
 
-        public int Create(  int emailTemplateId, 
-                            string emailName, 
-                            string subject, 
-                            string body)
+        public int Create(int emailTemplateId,
+                            string emailName,
+                            string subject,
+                            string htmlBody)
         {
-            CreateEMailFromTemplate(emailTemplateId, 
-                                    emailName, 
-                                    subject, 
-                                    body);
-
-            var request = new RetrieveRequest
-            {
-                ClientIDs = _config.ClientId.HasValue 
-                            ? new[]{new ClientID {ID = _config.ClientId.Value, IDSpecified = true }}
-                            : null,
-                ObjectType = "Email",
-                Properties = new[] { "Name", "ID" }
-            };
-
-            string requestId;
-            APIObject[] results;
-            _client.Retrieve(request, out requestId, out results);
-
-            if (results != null && results.Any())
-            {
-                return results.Cast<Email>()
-                       .Where(r => r.Name.Equals(emailName, StringComparison.InvariantCultureIgnoreCase))
-                       .Max(r => r.ID);
-            }
-            return 0;
+            return Create(emailTemplateId, emailName, subject, htmlBody, new KeyValuePair<string, string>());
         }
 
-        private void CreateEMailFromTemplate(int templateId, 
+        public int Create(int emailTemplateId,
+            string emailName,
+            string subject,
+            KeyValuePair<string, string> contentArea )
+        {
+            return Create(emailTemplateId, emailName, subject, null, contentArea);
+        }
+
+        private int Create(  int emailTemplateId, 
+                            string emailName, 
+                            string subject, 
+                            string htmlBody,
+                            KeyValuePair<string, string> contentArea)
+        {
+            return  CreateEmailFromTemplate(emailTemplateId, 
+                                    emailName, 
+                                    subject, 
+                                    htmlBody,
+                                    contentArea);
+        }
+
+        private int CreateEmailFromTemplate(int templateId, 
                                      string name, 
                                      string subject, 
-                                     string content)
+                                     string htmlBody,
+                                     KeyValuePair<string, string> contentAreas)
         {
             var emailSoapXml = GetEmailSoapXml( _config.ApiUserName, 
                                                 _config.ApiPassword, 
@@ -64,7 +64,8 @@ namespace ExactTarget.EmailFromTemplateCreator
                                                 templateId,
                                                 name, 
                                                 subject, 
-                                                "<![CDATA[" + content + "]]>");
+                                                htmlBody,
+                                                contentAreas);
             var reqBytes = new UTF8Encoding().GetBytes(emailSoapXml);
             
             var req = (HttpWebRequest)WebRequest.Create(_config.EndPoint);
@@ -87,17 +88,76 @@ namespace ExactTarget.EmailFromTemplateCreator
                     xmlResponse = sr.ReadToEnd();
                 }
             }
-            Console.WriteLine(xmlResponse);
+
+
+            CreateResponse response;
+            try
+            {
+                var xdoc = XDocument.Parse(xmlResponse);
+                XNamespace ns = "http://exacttarget.com/wsdl/partnerAPI";
+                response = xdoc.Descendants(ns + "CreateResponse").Select(x => new CreateResponse
+                {
+                    OverallStatus = x.Element(ns + "OverallStatus").Value,
+                    Results = new List<Result>
+                    {
+                        new Result
+                        {
+                            NewId = int.Parse(x.Descendants(ns + "Results").FirstOrDefault().Element(ns + "NewID").Value),
+                            StatusCode = x.Descendants(ns + "Results").FirstOrDefault().Element(ns + "StatusCode").Value,
+                            StatusMessage =
+                                x.Descendants(ns + "Results").FirstOrDefault().Element(ns + "StatusMessage").Value
+                        }
+                    }
+                }).FirstOrDefault();
+
+            }
+            catch(Exception ex)
+            {
+                throw new Exception("Failed to deserialize response from ExactTarget: " + xmlResponse, ex);
+            }
+
+            if (response == null)
+            {
+                throw new Exception(string.Format("Error reponse from ExactTarget: " + xmlResponse));
+            }
+            
+            if (response.Results.Any(r => !r.StatusCode.Equals("OK", StringComparison.InvariantCultureIgnoreCase)))
+            {
+                var result = response.Results.First(r => !r.StatusCode.Equals("OK", StringComparison.InvariantCultureIgnoreCase));
+                throw new Exception(string.Format("Error response from ExactTarget StatusCode:{0} StatusMessage:{1}\n\n{2}", result.StatusCode, result.StatusMessage, xmlResponse));
+            }
+
+            if (!response.OverallStatus.Equals("OK", StringComparison.InvariantCultureIgnoreCase))
+            {
+                throw new Exception(string.Format("Error reponse from ExactTarget: " + xmlResponse));
+            }
+
+           
+
+            return response.Results.Any() ? response.Results.First().NewId : 0;
         }
 
-        private static string GetEmailSoapXml(string userName, 
+        private  string GetEmailSoapXml(string userName, 
                                               string password, 
                                               int? clientId, 
                                               int templateId, 
                                               string name, 
                                               string subject, 
-                                              string content)
+                                              string htmlBody, 
+                                              KeyValuePair<string, string> contentArea)
         {
+
+            var contentAreaXml = !string.IsNullOrEmpty( contentArea.Key)
+                                 ? "<ContentAreas>" +
+                                     "<PartnerKey xsi:nil=\"true\"/>" +
+                                     "<Key>" + contentArea.Key + "</Key>" +
+                                     "<Content><![CDATA[" + contentArea.Value + "]]></Content>" +
+                                     "<IsBlank>false</IsBlank>" +
+                                     "<IsDynamicContent>false</IsDynamicContent>" +
+                                     "<IsSurvey>false</IsSurvey>"
+                                     + "</ContentAreas>"
+                                 : "";
+
             var s =
                 "<soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\" xmlns:wsa=\"http://schemas.xmlsoap.org/ws/2004/08/addressing\" xmlns:wsse=\"http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd\" xmlns:wsu=\"http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-utility-1.0.xsd\">" +
                 "<soap:Header>" +
@@ -106,7 +166,7 @@ namespace ExactTarget.EmailFromTemplateCreator
                 "<wsa:ReplyTo>" +
                 "<wsa:Address>http://schemas.xmlsoap.org/ws/2004/08/addressing/role/anonymous</wsa:Address>" +
                 "</wsa:ReplyTo>" +
-                "<wsa:To>https://webservice.s6.exacttarget.com/Service.asmx</wsa:To>" +
+                "<wsa:To>" + _config.EndPoint + "</wsa:To>" +
                 "<wsse:Security soap:mustUnderstand=\"1\">" +
                 "<wsse:UsernameToken wsu:Id=\"SecurityToken-8ab9d52b-cf40-465b-9464-1a7c7f000460\">" +
                 "<wsse:Username>" + userName + "</wsse:Username>" +
@@ -121,16 +181,9 @@ namespace ExactTarget.EmailFromTemplateCreator
                 (clientId.HasValue ?  ("<Client><ID>" + clientId.GetValueOrDefault() + "</ID></Client>") : "") +
                 "<ObjectID xsi:nil=\"true\"/>" +
                 "<Name>" + name + "</Name>" +
-                "<HTMLBody>" + content + "</HTMLBody>" +
+                "<HTMLBody><![CDATA[" + htmlBody + "]]></HTMLBody>" +
                 "<TextBody/>" +
-                //"<ContentAreas>" +
-                //"<PartnerKey xsi:nil=\"true\"/>" +
-                //"<Key>DynamicArea</Key>" +
-                //"<Content>" + content + "</Content>" +
-                //"<IsBlank>false</IsBlank>" +
-                //"<IsDynamicContent>false</IsDynamicContent>" +
-                //"<IsSurvey>false</IsSurvey>" +
-                //"</ContentAreas>" +
+                contentAreaXml +
                 "<Subject>" + subject + "</Subject>" +
                 "<IsHTMLPaste>false</IsHTMLPaste>" +
                 "<CharacterSet>UTF-8</CharacterSet>" +
@@ -144,34 +197,23 @@ namespace ExactTarget.EmailFromTemplateCreator
                 "</soap:Envelope>";
             return s;
         }
+    }
 
-        public int RetrieveEmailTemplateId(string name)
+    public class CreateResponse
+    {
+        public string OverallStatus { get; set; }
+        public List<Result> Results;
+
+        public CreateResponse()
         {
-            var request = new RetrieveRequest
-            {
-                ClientIDs = _config.ClientId.HasValue 
-                            ? new[] { new ClientID { ID = _config.ClientId.Value, IDSpecified = true } }
-                            : null,
-                ObjectType = "Template",
-                Properties = new[] { "ID", "TemplateName", "ObjectID", "CustomerKey" }
-            };
-            string requestId;
-            APIObject[] results;
-
-            _client.Retrieve(request, out requestId, out results);
-
-            if (results != null && results.Any())
-            {
-                var t = results.Cast<Template>().FirstOrDefault(r => r.TemplateName.Equals(name, StringComparison.InvariantCultureIgnoreCase));
-                if (t != null)
-                {
-                    return t.ID;
-                }
-            }
-
-            return 0;
+            Results = new List<Result>();
         }
+    }
 
-        
+    public class Result
+    {
+        public string StatusCode { get; set; }
+        public string StatusMessage { get; set; }
+        public int  NewId { get; set; }
     }
 }
