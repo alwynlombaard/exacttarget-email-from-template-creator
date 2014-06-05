@@ -1,0 +1,19 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://schemas.microsoft.com/packaging/2010/07/nuspec.xsd">
+    <metadata>
+        <id>ExactTarget.EmailFromTemplate</id>
+        <version>1.0.0</version>
+        <title>ExactTarget.EmailFromTemplate</title>
+        <authors>Alwyn Lombaard</authors>
+        <projectUrl>https://github.com/alwynlombaard/exacttarget-email-from-template-creator</projectUrl>
+        <requireLicenseAcceptance>false</requireLicenseAcceptance>
+        <description>This library makes it possible to create an ExactTarget email from a specified template with a content area.</description>
+        <summary>This library makes it possible to create an ExactTarget email from a specified template with a content area.</summary>
+        <tags>ExactTarget emailtemplate email template</tags>
+    </metadata>
+    <files>
+        <file src="content\App.config.transform" target="content\App.config.transform" />
+        <file src="content\Web.config.transform" target="content\Web.config.transform" />
+        <file src="lib\ExactTarget.EmailFromTemplateCreator.dll" target="lib\ExactTarget.EmailFromTemplateCreator.dll" />
+    </files>
+</package>

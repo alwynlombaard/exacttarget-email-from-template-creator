@@ -9,7 +9,7 @@ How to use
 
 Get it from Nuget:
 ```
-Coming soon
+PM> Install-Package ExactTarget.EmailFromTemplate
 ```
 
 ```C#
@@ -18,7 +18,7 @@ var emailCreator = new EmailCreator(new ExactTargetConfiguration
 	ApiUserName = "your api user name",
 	ApiPassword = "your api password",
 	//your end point given to you by ET
-	EndPoint = "https://webservice.s6.exacttarget.com/Service.asmx"
+	EndPoint = "https://webservice.s6.exacttarget.com/Service.asmx",
 	ClientId = 123 //optional business unit id
 });
 
