@@ -2,7 +2,7 @@
 <package xmlns="http://schemas.microsoft.com/packaging/2010/07/nuspec.xsd">
     <metadata>
         <id>ExactTarget.EmailFromTemplate</id>
-        <version>1.0.0</version>
+        <version>1.0.1</version>
         <title>ExactTarget.EmailFromTemplate</title>
         <authors>Alwyn Lombaard</authors>
         <projectUrl>https://github.com/alwynlombaard/exacttarget-email-from-template-creator</projectUrl>
@@ -12,8 +12,7 @@
         <tags>ExactTarget emailtemplate email template</tags>
     </metadata>
     <files>
-        <file src="content\App.config.transform" target="content\App.config.transform" />
-        <file src="content\Web.config.transform" target="content\Web.config.transform" />
+        <file src="content\_._" target="content\_._" />
         <file src="lib\ExactTarget.EmailFromTemplateCreator.dll" target="lib\ExactTarget.EmailFromTemplateCreator.dll" />
     </files>
 </package>

@@ -52,7 +52,8 @@ namespace ExactTarget.EmailFromTemplateCreator
                                      string htmlBody,
                                      KeyValuePair<string, string> contentAreas)
         {
-            var emailSoapXml = GetEmailSoapXml( _config.ApiUserName, 
+            var emailSoapXml = GetEmailSoapXml( _config.EndPoint,
+                                                _config.ApiUserName, 
                                                 _config.ApiPassword, 
                                                 _config.ClientId, 
                                                 templateId,
@@ -65,7 +66,7 @@ namespace ExactTarget.EmailFromTemplateCreator
             CreateResponse response;
             try
             {
-                response = GetResponseFromSoapResonse(xmlSoapResponse);
+                response = GetResponseFromSoapResponse(xmlSoapResponse);
             }
             catch(Exception ex)
             {
@@ -87,9 +88,7 @@ namespace ExactTarget.EmailFromTemplateCreator
             {
                 throw new Exception(string.Format("Error reponse from ExactTarget: " + xmlSoapResponse));
             }
-
-           
-
+            
             return response.Results.Any() ? response.Results.First().NewId : 0;
         }
 
@@ -104,14 +103,13 @@ namespace ExactTarget.EmailFromTemplateCreator
             }
         }
 
-        private CreateResponse GetResponseFromSoapResonse(string xmlResponse)
+        private static CreateResponse GetResponseFromSoapResponse(string xmlResponse)
         {
             // ReSharper disable PossibleNullReferenceException
             var xdoc = XDocument.Parse(xmlResponse);
             XNamespace ns = "http://exacttarget.com/wsdl/partnerAPI";
             return xdoc.Descendants(ns + "CreateResponse").Select(x => new CreateResponse
             {
-
                 OverallStatus = x.Element(ns + "OverallStatus").Value,
 
                 Results = new List<Result>
@@ -128,7 +126,8 @@ namespace ExactTarget.EmailFromTemplateCreator
             // ReSharper restore PossibleNullReferenceException
         }
 
-        private  string GetEmailSoapXml(string userName, 
+        private static string GetEmailSoapXml(      string endPoint,
+                                              string userName, 
                                               string password, 
                                               int? clientId, 
                                               int templateId, 
@@ -149,7 +148,7 @@ namespace ExactTarget.EmailFromTemplateCreator
                                      + "</ContentAreas>"
                                  : "";
 
-            var s =
+            return
                 "<soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\" xmlns:wsa=\"http://schemas.xmlsoap.org/ws/2004/08/addressing\" xmlns:wsse=\"http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd\" xmlns:wsu=\"http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-utility-1.0.xsd\">" +
                 "<soap:Header>" +
                 "<wsa:Action>Create</wsa:Action>" +
@@ -157,7 +156,7 @@ namespace ExactTarget.EmailFromTemplateCreator
                 "<wsa:ReplyTo>" +
                 "<wsa:Address>http://schemas.xmlsoap.org/ws/2004/08/addressing/role/anonymous</wsa:Address>" +
                 "</wsa:ReplyTo>" +
-                "<wsa:To>" + _config.EndPoint + "</wsa:To>" +
+                "<wsa:To>" + endPoint + "</wsa:To>" +
                 "<wsse:Security soap:mustUnderstand=\"1\">" +
                 "<wsse:UsernameToken wsu:Id=\"SecurityToken-8ab9d52b-cf40-465b-9464-1a7c7f000460\">" +
                 "<wsse:Username>" + userName + "</wsse:Username>" +
@@ -186,7 +185,6 @@ namespace ExactTarget.EmailFromTemplateCreator
                 "</CreateRequest>" +
                 "</soap:Body>" +
                 "</soap:Envelope>";
-            return s;
         }
     }
 
