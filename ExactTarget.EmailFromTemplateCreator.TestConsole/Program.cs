@@ -21,7 +21,7 @@ namespace ExactTarget.EmailFromTemplateCreator.TestConsole
                 var id = emailCreator.Create(templateId,
                     "test-email",
                     "test-subject",
-                    new KeyValuePair<string, string>("ContentAreaName", "<p>Test content</p>")
+                    new KeyValuePair<string, string>("DynamicArea", "<p>Test content</p>")
                     );
 
                 Console.Write("Done {0}", id);

@@ -1,26 +1,20 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
-using System.Net;
+using System.Net.Http;
 using System.Text;
+using System.Threading.Tasks;
 using System.Xml.Linq;
-using ExactTarget.EmailFromTemplateCreator.ExactTargetApi;
 
 namespace ExactTarget.EmailFromTemplateCreator
 {
     public class EmailCreator : IEmailCreator
     {
         private readonly IExactTargetConfiguration _config;
-        private readonly SoapClient _client;
 
         public EmailCreator(IExactTargetConfiguration config)
         {
             _config = config;
-            _client = new SoapClient(_config.SoapBinding ?? "ExactTarget.Soap", _config.EndPoint);
-            if (_client.ClientCredentials == null) return;
-            _client.ClientCredentials.UserName.UserName = _config.ApiUserName;
-            _client.ClientCredentials.UserName.Password = _config.ApiPassword;
         }
 
         public int Create(int emailTemplateId,
@@ -66,39 +60,61 @@ namespace ExactTarget.EmailFromTemplateCreator
                                                 subject, 
                                                 htmlBody,
                                                 contentAreas);
-            var reqBytes = new UTF8Encoding().GetBytes(emailSoapXml);
-            
-            var req = (HttpWebRequest)WebRequest.Create(_config.EndPoint);
-            req.Method = "POST";
-            req.ContentType = "text/xml;charset=UTF-8";
-            req.ContentLength = reqBytes.Length;
-            
-            using (var reqStream = req.GetRequestStream())
-            {
-                reqStream.Write(reqBytes, 0, reqBytes.Length);
-            }
-
-            var resp = (HttpWebResponse)req.GetResponse();
-            var xmlResponse = "";
-            var stream = resp.GetResponseStream();
-            if (stream != null)
-            {
-                using (var sr = new StreamReader(stream))
-                {
-                    xmlResponse = sr.ReadToEnd();
-                }
-            }
-
+            var xmlSoapResponse = HttpPost(emailSoapXml).Result;
 
             CreateResponse response;
             try
             {
-                var xdoc = XDocument.Parse(xmlResponse);
-                XNamespace ns = "http://exacttarget.com/wsdl/partnerAPI";
-                response = xdoc.Descendants(ns + "CreateResponse").Select(x => new CreateResponse
+                response = GetResponseFromSoapResonse(xmlSoapResponse);
+            }
+            catch(Exception ex)
+            {
+                throw new Exception("Failed to deserialize response from ExactTarget: " + xmlSoapResponse, ex);
+            }
+
+            if (response == null)
+            {
+                throw new Exception(string.Format("Error reponse from ExactTarget: " + xmlSoapResponse));
+            }
+            
+            if (response.Results.Any(r => !r.StatusCode.Equals("OK", StringComparison.InvariantCultureIgnoreCase)))
+            {
+                var result = response.Results.First(r => !r.StatusCode.Equals("OK", StringComparison.InvariantCultureIgnoreCase));
+                throw new Exception(string.Format("Error response from ExactTarget StatusCode:{0} StatusMessage:{1}\n\n{2}", result.StatusCode, result.StatusMessage, xmlSoapResponse));
+            }
+
+            if (!response.OverallStatus.Equals("OK", StringComparison.InvariantCultureIgnoreCase))
+            {
+                throw new Exception(string.Format("Error reponse from ExactTarget: " + xmlSoapResponse));
+            }
+
+           
+
+            return response.Results.Any() ? response.Results.First().NewId : 0;
+        }
+
+        private async Task<string> HttpPost(string emailSoapXml)
+        {
+            using (var client = new HttpClient())
+            {
+                using (var result = await client.PostAsync(new Uri(_config.EndPoint), new StringContent(emailSoapXml, Encoding.UTF8, "text/xml")))
                 {
-                    OverallStatus = x.Element(ns + "OverallStatus").Value,
-                    Results = new List<Result>
+                    return await result.Content.ReadAsStringAsync();
+                }
+            }
+        }
+
+        private CreateResponse GetResponseFromSoapResonse(string xmlResponse)
+        {
+            // ReSharper disable PossibleNullReferenceException
+            var xdoc = XDocument.Parse(xmlResponse);
+            XNamespace ns = "http://exacttarget.com/wsdl/partnerAPI";
+            return xdoc.Descendants(ns + "CreateResponse").Select(x => new CreateResponse
+            {
+
+                OverallStatus = x.Element(ns + "OverallStatus").Value,
+
+                Results = new List<Result>
                     {
                         new Result
                         {
@@ -108,33 +124,8 @@ namespace ExactTarget.EmailFromTemplateCreator
                                 x.Descendants(ns + "Results").FirstOrDefault().Element(ns + "StatusMessage").Value
                         }
                     }
-                }).FirstOrDefault();
-
-            }
-            catch(Exception ex)
-            {
-                throw new Exception("Failed to deserialize response from ExactTarget: " + xmlResponse, ex);
-            }
-
-            if (response == null)
-            {
-                throw new Exception(string.Format("Error reponse from ExactTarget: " + xmlResponse));
-            }
-            
-            if (response.Results.Any(r => !r.StatusCode.Equals("OK", StringComparison.InvariantCultureIgnoreCase)))
-            {
-                var result = response.Results.First(r => !r.StatusCode.Equals("OK", StringComparison.InvariantCultureIgnoreCase));
-                throw new Exception(string.Format("Error response from ExactTarget StatusCode:{0} StatusMessage:{1}\n\n{2}", result.StatusCode, result.StatusMessage, xmlResponse));
-            }
-
-            if (!response.OverallStatus.Equals("OK", StringComparison.InvariantCultureIgnoreCase))
-            {
-                throw new Exception(string.Format("Error reponse from ExactTarget: " + xmlResponse));
-            }
-
-           
-
-            return response.Results.Any() ? response.Results.First().NewId : 0;
+            }).FirstOrDefault();
+            // ReSharper restore PossibleNullReferenceException
         }
 
         private  string GetEmailSoapXml(string userName, 
